@@ -39,21 +39,17 @@ openssl req -new \
   -subj "/emailAddress=james@james-Openclaw.local,CN=Sheldon Drive Distribution,C=US"
 ```
 
-Upload `private/apple-signing/sheldon-drive.csr` when Apple asks for the certificate signing request. After Apple gives you a `.cer` file, put it in `private/apple-signing/distribution.cer` and run:
+Upload `private/apple-signing/sheldon-drive.csr` when Apple asks for the certificate signing request. After Apple gives you a `.cer` file, put it in `private/apple-signing/distribution.cer`. Download the App Store provisioning profile as `private/apple-signing/profile.mobileprovision`, then run:
 
 ```bash
-openssl x509 -inform DER -in private/apple-signing/distribution.cer -out private/apple-signing/distribution.pem
-openssl pkcs12 -export \
-  -inkey private/apple-signing/sheldon-drive.key \
-  -in private/apple-signing/distribution.pem \
-  -out private/apple-signing/distribution.p12
+./scripts/prepare-testflight-signing-assets.sh
 ```
 
 Choose a strong password for the `.p12`; that password becomes the `APPLE_CERTIFICATE_PASSWORD` GitHub secret.
 
 ## GitHub Secrets
 
-Add these in GitHub > Hermes repo > Settings > Secrets and variables > Actions > New repository secret:
+Add these in GitHub > SheldonDrive repo > Settings > Secrets and variables > Actions > New repository secret:
 
 - `APPLE_TEAM_ID`
 - `APPLE_CERTIFICATE_P12_BASE64`
