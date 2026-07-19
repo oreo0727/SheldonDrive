@@ -1,0 +1,7 @@
+DerivedData/
+build/
+private/apple-signing/
+*.xcuserdata/
+*.xcuserstate
+*.ipa
+*.dSYM.zip
