@@ -39,8 +39,10 @@ jobs:
 
           security cms -D -i build/profile.mobileprovision > build/profile.plist
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' build/profile.plist)
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' build/profile.plist)
           cp build/profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
       - name: Create export options
         env:
@@ -60,7 +62,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>${APP_BUNDLE_ID}</key>
-              <string>${PROFILE_UUID}</string>
+              <string>${PROFILE_NAME}</string>
             </dict>
             <key>signingCertificate</key>
             <string>Apple Distribution</string>
@@ -81,7 +83,9 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            CODE_SIGN_STYLE=Manual
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
       - name: Export IPA
         run: |

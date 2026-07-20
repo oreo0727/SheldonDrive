@@ -1,6 +1,8 @@
 DerivedData/
 build/
 private/apple-signing/
+__pycache__/
+*.py[cod]
 *.xcuserdata/
 *.xcuserstate
 *.ipa
