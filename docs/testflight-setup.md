@@ -69,6 +69,22 @@ base64 -w 0 private/apple-signing/profile.mobileprovision
 
 For `APP_STORE_CONNECT_API_PRIVATE_KEY`, paste the full contents of the downloaded `AuthKey_XXXXXXXXXX.p8` file.
 
+Or let the local script set the GitHub secrets after the App Store Connect API key is downloaded. Create `private/apple-signing/app-store-connect-api.env`:
+
+```bash
+cat > private/apple-signing/app-store-connect-api.env <<'EOF'
+APP_STORE_CONNECT_API_KEY_ID=YOUR_KEY_ID
+APP_STORE_CONNECT_API_ISSUER_ID=YOUR_ISSUER_ID
+APP_STORE_CONNECT_API_PRIVATE_KEY_FILE=private/apple-signing/AuthKey_YOUR_KEY_ID.p8
+EOF
+```
+
+Then run:
+
+```bash
+./scripts/set-github-actions-secrets.py
+```
+
 ## Upload
 
 After the secrets are set, go to GitHub Actions and run:
