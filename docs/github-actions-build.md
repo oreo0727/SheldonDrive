@@ -4,7 +4,7 @@ Sheldon Drive can be checked on GitHub-hosted macOS runners without owning a Mac
 
 ## What Works Now
 
-- The workflow at `.github/workflows/ios-build.yml` runs on `macos-15`.
+- The workflow at `.github/workflows/ios-build.yml` runs on `macos-26`.
 - It checks out the repo, reports the Xcode version, lists available iOS runtimes, and builds the app for a generic iOS Simulator destination.
 - The workflow runs automatically on pushes and pull requests, and it can also be started manually from the GitHub Actions tab.
 
