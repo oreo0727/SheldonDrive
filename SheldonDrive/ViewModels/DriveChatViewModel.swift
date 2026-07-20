@@ -12,7 +12,12 @@ final class DriveChatViewModel: ObservableObject {
     @Published var status = "Ready"
     @Published var isListening = false
     @Published var isSending = false
+    @Published var isLoadingProjects = false
     @Published var lastError = ""
+    @Published var projects: [HermesProject] = []
+    @Published var selectedProjectId: String {
+        didSet { UserDefaults.standard.set(selectedProjectId, forKey: "selectedHermesProjectId") }
+    }
 
     private let chatClient = HermesChatClient()
     private let speech = SpeechController()
@@ -21,10 +26,19 @@ final class DriveChatViewModel: ObservableObject {
 
     init() {
         endpointText = UserDefaults.standard.string(forKey: "hermesEndpoint") ?? "http://100.71.8.121:8799"
+        selectedProjectId = UserDefaults.standard.string(forKey: "selectedHermesProjectId") ?? ""
     }
 
     var endpointURL: URL? {
         URL(string: endpointText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    var selectedProject: HermesProject? {
+        projects.first { $0.projectId == selectedProjectId } ?? projects.first(where: \.isActive) ?? projects.first
+    }
+
+    var selectedProjectTitle: String {
+        selectedProject?.displayTitle ?? "All Hermes projects"
     }
 
     func requestPermissions() {
@@ -37,6 +51,41 @@ final class DriveChatViewModel: ObservableObject {
                 lastError = "Enable microphone and speech recognition in Settings."
             }
         }
+    }
+
+    func refreshProjects() {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        isLoadingProjects = true
+        Task {
+            do {
+                let fetched = try await chatClient.fetchProjects(endpoint: endpointURL)
+                projects = fetched
+                if selectedProjectId.isEmpty || !fetched.contains(where: { $0.projectId == selectedProjectId }) {
+                    selectedProjectId = fetched.first(where: \.isActive)?.projectId ?? fetched.first?.projectId ?? ""
+                }
+                status = "Projects synced"
+                lastError = ""
+            } catch {
+                lastError = "Could not load projects: \(error.localizedDescription)"
+                status = "Project sync error"
+            }
+            isLoadingProjects = false
+        }
+    }
+
+    func selectProject(_ project: HermesProject) {
+        selectedProjectId = project.projectId
+        sessionId = ""
+        messages = [
+            ChatMessage(
+                role: .assistant,
+                content: "Project channel set to \(project.displayTitle). Ask me what is blocked, what changed, or what the next proof step should be."
+            )
+        ]
+        status = "Project selected"
     }
 
     func toggleListening() {
@@ -115,7 +164,8 @@ final class DriveChatViewModel: ObservableObject {
         lastError = ""
 
         do {
-            let response = try await chatClient.send(endpoint: endpointURL, sessionId: sessionId, messages: messages)
+            let projectId = selectedProject?.projectId ?? selectedProjectId
+            let response = try await chatClient.send(endpoint: endpointURL, sessionId: sessionId, projectId: projectId, messages: messages)
             if let newSession = response.sessionId, !newSession.isEmpty {
                 sessionId = newSession
             }

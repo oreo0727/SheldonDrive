@@ -16,6 +16,7 @@
 		8F1A00000000000000000007 /* DriveChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1B00000000000000000007 /* DriveChatView.swift */; };
 		8F1A00000000000000000008 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1B00000000000000000008 /* MessageBubble.swift */; };
 		8F1A00000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F1B00000000000000000009 /* Assets.xcassets */; };
+		8F1A0000000000000000000A /* HermesProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1B0000000000000000000C /* HermesProject.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		8F1B00000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8F1B0000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8F1B0000000000000000000B /* SheldonDrive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SheldonDrive.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F1B0000000000000000000C /* HermesProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/HermesProject.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +58,7 @@
 			children = (
 				8F1B00000000000000000001 /* SheldonDriveApp.swift */,
 				8F1B00000000000000000002 /* ChatMessage.swift */,
+				8F1B0000000000000000000C /* HermesProject.swift */,
 				8F1B00000000000000000003 /* HermesChatClient.swift */,
 				8F1B00000000000000000004 /* SpeechController.swift */,
 				8F1B00000000000000000005 /* VoicePlayback.swift */,
@@ -147,6 +150,7 @@
 			files = (
 				8F1A00000000000000000001 /* SheldonDriveApp.swift in Sources */,
 				8F1A00000000000000000002 /* ChatMessage.swift in Sources */,
+				8F1A0000000000000000000A /* HermesProject.swift in Sources */,
 				8F1A00000000000000000003 /* HermesChatClient.swift in Sources */,
 				8F1A00000000000000000004 /* SpeechController.swift in Sources */,
 				8F1A00000000000000000005 /* VoicePlayback.swift in Sources */,
