@@ -110,3 +110,82 @@ jobs:
             --file "$IPA_PATH" \
             --apiKey "$API_KEY_ID" \
             --apiIssuer "$API_ISSUER_ID"
+
+      - name: Add build to TestFlight groups
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet PyJWT cryptography
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.parse
+          import urllib.request
+
+          import jwt
+
+          key_id = os.environ["API_KEY_ID"]
+          issuer_id = os.environ["API_ISSUER_ID"]
+          private_key = os.environ["API_PRIVATE_KEY"]
+          bundle_id = os.environ["APP_BUNDLE_ID"]
+          build_number = os.environ["BUILD_NUMBER"]
+          now = int(time.time())
+          token = jwt.encode(
+              {"iss": issuer_id, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
+              private_key,
+              algorithm="ES256",
+              headers={"kid": key_id, "typ": "JWT"},
+          )
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "User-Agent": "SheldonDrive-GitHubActions",
+          }
+
+          def request(path, params=None, *, method="GET", payload=None):
+              url = "https://api.appstoreconnect.apple.com/v1" + path
+              if params:
+                  url += "?" + urllib.parse.urlencode(params, doseq=True)
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, method=method, headers=headers)
+              with urllib.request.urlopen(req, timeout=45) as response:
+                  body = response.read().decode()
+                  return json.loads(body) if body else {}
+
+          apps = request("/apps", {"filter[bundleId]": bundle_id, "limit": "1"}).get("data", [])
+          if not apps:
+              raise SystemExit(f"No App Store Connect app found for {bundle_id}")
+          app_id = apps[0]["id"]
+
+          build = None
+          for _ in range(30):
+              builds = request(
+                  "/builds",
+                  {"filter[app]": app_id, "sort": "-uploadedDate", "limit": "10"},
+              ).get("data", [])
+              build = next((row for row in builds if row.get("attributes", {}).get("version") == build_number), None)
+              if build and build.get("attributes", {}).get("processingState") == "VALID":
+                  break
+              time.sleep(20)
+          if not build:
+              raise SystemExit(f"Build {build_number} was not found in App Store Connect")
+          if build.get("attributes", {}).get("processingState") != "VALID":
+              raise SystemExit(f"Build {build_number} is not valid yet: {build.get('attributes', {}).get('processingState')}")
+
+          groups = request("/betaGroups", {"filter[app]": app_id, "limit": "20"}).get("data", [])
+          if not groups:
+              raise SystemExit("No TestFlight beta groups found")
+          for group in groups:
+              request(
+                  f"/betaGroups/{group['id']}/relationships/builds",
+                  method="POST",
+                  payload={"data": [{"type": "builds", "id": build["id"]}]},
+              )
+              print(f"Attached build {build_number} to TestFlight group {group.get('attributes', {}).get('name')}")
+          PY
