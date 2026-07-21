@@ -5,6 +5,46 @@ struct HermesChatClient {
         let projects: [HermesProject]
     }
 
+    struct MissionCardsResponse: Decodable {
+        let missionCards: [MissionCard]
+
+        enum CodingKeys: String, CodingKey {
+            case missionCards = "mission_cards"
+        }
+    }
+
+    struct BriefingResponse: Decodable {
+        let ok: Bool
+        let briefing: String
+        let card: MissionCard?
+        let receipts: [MissionCard.Receipt]?
+    }
+
+    struct WatchResponse: Decodable {
+        let ok: Bool
+        let summary: String
+        let alerts: [WatchAlert]
+    }
+
+    struct HandoffResponse: Decodable {
+        struct Handoff: Decodable {
+            let handoffId: String
+            let target: String
+            let instruction: String
+            let status: String
+
+            enum CodingKeys: String, CodingKey {
+                case handoffId = "handoff_id"
+                case target
+                case instruction
+                case status
+            }
+        }
+
+        let ok: Bool
+        let handoff: Handoff
+    }
+
     struct ChatResponse: Decodable {
         let ok: Bool?
         let sessionId: String?
@@ -87,5 +127,57 @@ struct HermesChatClient {
             if left.isActive != right.isActive { return left.isActive && !right.isActive }
             return (left.progressPercent ?? 0) > (right.progressPercent ?? 0)
         }
+    }
+
+    func fetchMissionCards(endpoint: URL) async throws -> [MissionCard] {
+        let url = endpoint.appending(path: "api/mission-cards")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(MissionCardsResponse.self, from: data).missionCards
+    }
+
+    func requestBriefing(endpoint: URL, projectId: String, depth: String, mode: String) async throws -> BriefingResponse {
+        var request = URLRequest(url: endpoint.appending(path: "api/briefing"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode([
+            "project_id": projectId,
+            "depth": depth,
+            "mode": mode
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(BriefingResponse.self, from: data)
+    }
+
+    func fetchWatch(endpoint: URL) async throws -> WatchResponse {
+        let url = endpoint.appending(path: "api/watch")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(WatchResponse.self, from: data)
+    }
+
+    func createHandoff(endpoint: URL, projectId: String, target: String, instruction: String) async throws -> HandoffResponse {
+        var request = URLRequest(url: endpoint.appending(path: "api/handoff"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode([
+            "project_id": projectId,
+            "target": target,
+            "instruction": instruction
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(HandoffResponse.self, from: data)
     }
 }

@@ -13,8 +13,13 @@ final class DriveChatViewModel: ObservableObject {
     @Published var isListening = false
     @Published var isSending = false
     @Published var isLoadingProjects = false
+    @Published var isMissionModeBusy = false
+    @Published var isCarMode = false
     @Published var lastError = ""
     @Published var projects: [HermesProject] = []
+    @Published var missionCards: [MissionCard] = []
+    @Published var watchAlerts: [WatchAlert] = []
+    @Published var watchSummary = "Watch mode is idle."
     @Published var selectedProjectId: String {
         didSet { UserDefaults.standard.set(selectedProjectId, forKey: "selectedHermesProjectId") }
     }
@@ -38,7 +43,13 @@ final class DriveChatViewModel: ObservableObject {
     }
 
     var selectedProjectTitle: String {
-        selectedProject?.displayTitle ?? "All Hermes projects"
+        selectedMissionCard?.title ?? selectedProject?.displayTitle ?? "All Hermes projects"
+    }
+
+    var selectedMissionCard: MissionCard? {
+        missionCards.first { $0.projectId == selectedProjectId }
+            ?? missionCards.first(where: \.active)
+            ?? missionCards.first
     }
 
     func requestPermissions() {
@@ -66,6 +77,8 @@ final class DriveChatViewModel: ObservableObject {
                 if selectedProjectId.isEmpty || !fetched.contains(where: { $0.projectId == selectedProjectId }) {
                     selectedProjectId = fetched.first(where: \.isActive)?.projectId ?? fetched.first?.projectId ?? ""
                 }
+                await refreshMissionCards(endpoint: endpointURL)
+                await refreshWatch(endpoint: endpointURL)
                 status = "Projects synced"
                 lastError = ""
             } catch {
@@ -73,6 +86,25 @@ final class DriveChatViewModel: ObservableObject {
                 status = "Project sync error"
             }
             isLoadingProjects = false
+        }
+    }
+
+    private func refreshMissionCards(endpoint: URL) async {
+        do {
+            missionCards = try await chatClient.fetchMissionCards(endpoint: endpoint)
+        } catch {
+            // Older Hermes servers may not expose mission cards yet; project mode still works.
+        }
+    }
+
+    private func refreshWatch(endpoint: URL) async {
+        do {
+            let response = try await chatClient.fetchWatch(endpoint: endpoint)
+            watchSummary = response.summary
+            watchAlerts = response.alerts
+        } catch {
+            watchSummary = "Watch digest unavailable."
+            watchAlerts = []
         }
     }
 
@@ -86,6 +118,110 @@ final class DriveChatViewModel: ObservableObject {
             )
         ]
         status = "Project selected"
+    }
+
+    func requestBriefing(depth: String = "short") {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        let projectId = selectedMissionCard?.projectId ?? selectedProject?.projectId ?? selectedProjectId
+        guard !projectId.isEmpty else {
+            lastError = "Select a project first."
+            return
+        }
+        isMissionModeBusy = true
+        status = isCarMode ? "Car briefing" : "Briefing"
+        Task {
+            do {
+                let response = try await chatClient.requestBriefing(
+                    endpoint: endpointURL,
+                    projectId: projectId,
+                    depth: depth,
+                    mode: isCarMode ? "car" : "normal"
+                )
+                if let card = response.card {
+                    upsertMissionCard(card)
+                }
+                append(.assistant, response.briefing)
+                voice.speak(response.briefing)
+                status = "Briefed"
+                lastError = ""
+            } catch {
+                lastError = "Briefing failed: \(error.localizedDescription)"
+                status = "Briefing error"
+            }
+            isMissionModeBusy = false
+        }
+    }
+
+    func requestWatchDigest() {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        isMissionModeBusy = true
+        status = "Checking watch"
+        Task {
+            do {
+                let response = try await chatClient.fetchWatch(endpoint: endpointURL)
+                watchSummary = response.summary
+                watchAlerts = response.alerts
+                let lines = [response.summary] + response.alerts.prefix(3).map { "\($0.title): \($0.message)" }
+                let digest = lines.joined(separator: "\n")
+                append(.assistant, digest)
+                voice.speak(response.summary)
+                status = "Watch updated"
+                lastError = ""
+            } catch {
+                lastError = "Watch failed: \(error.localizedDescription)"
+                status = "Watch error"
+            }
+            isMissionModeBusy = false
+        }
+    }
+
+    func createHandoff(target: String) {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        let projectId = selectedMissionCard?.projectId ?? selectedProject?.projectId ?? selectedProjectId
+        guard !projectId.isEmpty else {
+            lastError = "Select a project first."
+            return
+        }
+        let title = selectedProjectTitle
+        let instruction = "Review \(title) and report the next useful proof step with receipts."
+        isMissionModeBusy = true
+        status = "Handing off"
+        Task {
+            do {
+                let response = try await chatClient.createHandoff(
+                    endpoint: endpointURL,
+                    projectId: projectId,
+                    target: target,
+                    instruction: instruction
+                )
+                let reply = "Queued handoff to \(response.handoff.target): \(response.handoff.instruction)"
+                append(.assistant, reply)
+                voice.speak("Queued handoff to \(response.handoff.target).")
+                status = "Handoff queued"
+                lastError = ""
+            } catch {
+                lastError = "Handoff failed: \(error.localizedDescription)"
+                status = "Handoff error"
+            }
+            isMissionModeBusy = false
+        }
+    }
+
+    private func upsertMissionCard(_ card: MissionCard) {
+        if let index = missionCards.firstIndex(where: { $0.projectId == card.projectId }) {
+            missionCards[index] = card
+        } else {
+            missionCards.insert(card, at: 0)
+        }
     }
 
     func toggleListening() {

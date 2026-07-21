@@ -13,6 +13,8 @@ struct DriveChatView: View {
                         hero
                         projectSelector
                         activeProjectBrief
+                        missionActions
+                        watchPanel
                         messages
                     }
                     .padding(.horizontal, 18)
@@ -144,29 +146,49 @@ struct DriveChatView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.selectedProject?.displayTitle ?? "All Hermes projects")
+                    Text(viewModel.selectedMissionCard?.title ?? viewModel.selectedProject?.displayTitle ?? "All Hermes projects")
                         .font(.headline.weight(.black))
                         .foregroundStyle(.white)
-                    Text(viewModel.selectedProject?.statusLabel ?? "General channel")
+                    Text(viewModel.selectedMissionCard?.status ?? viewModel.selectedProject?.statusLabel ?? "General channel")
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(Color.white.opacity(0.52))
                 }
                 Spacer()
-                if let percent = viewModel.selectedProject?.progressPercent {
+                if let percent = viewModel.selectedMissionCard?.progressPercent ?? viewModel.selectedProject?.progressPercent {
                     Text("\(percent)%")
                         .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(Color.orange)
                 }
             }
 
-            if let now = viewModel.selectedProject?.tracking?.now, !now.isEmpty {
+            if let objective = viewModel.selectedMissionCard?.objective, !objective.isEmpty {
+                BriefLine(label: "Mission", value: objective)
+            }
+            if let now = viewModel.selectedMissionCard?.now ?? viewModel.selectedProject?.tracking?.now, !now.isEmpty {
                 BriefLine(label: "Now", value: now)
             }
-            if let next = viewModel.selectedProject?.tracking?.next, !next.isEmpty {
+            if let next = viewModel.selectedMissionCard?.next ?? viewModel.selectedProject?.tracking?.next, !next.isEmpty {
                 BriefLine(label: "Next", value: next)
             }
-            if let slice = viewModel.selectedProject?.focusedSlice, !slice.isEmpty {
-                BriefLine(label: "Slice", value: slice)
+            if let blocker = viewModel.selectedMissionCard?.blockedSummary, !blocker.isEmpty {
+                BriefLine(label: "Blocked", value: blocker)
+            }
+
+            if let receipts = viewModel.selectedMissionCard?.receipts, !receipts.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("RECEIPTS")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.orange.opacity(0.80))
+                    ForEach(receipts.prefix(3)) { receipt in
+                        Text(receipt.path)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .foregroundStyle(Color.white.opacity(0.68))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.22), in: Capsule())
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -190,6 +212,89 @@ struct DriveChatView: View {
                 .fill(Color.white.opacity(0.09))
                 .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.12)))
         )
+    }
+
+    private var missionActions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Mission Mode", systemImage: "sparkles")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(Color.white.opacity(0.55))
+                    .tracking(1.1)
+                Spacer()
+                Toggle("Car", isOn: $viewModel.isCarMode)
+                    .labelsHidden()
+                    .tint(.orange)
+                Text("Car")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(viewModel.isCarMode ? Color.orange : Color.white.opacity(0.52))
+            }
+
+            HStack(spacing: 10) {
+                MissionButton(title: "Brief Me", icon: "text.bubble.fill", prominent: true) {
+                    textFieldFocused = false
+                    viewModel.requestBriefing(depth: viewModel.isCarMode ? "short" : "medium")
+                }
+                MissionButton(title: "Blocks", icon: "exclamationmark.triangle.fill", prominent: false) {
+                    textFieldFocused = false
+                    viewModel.requestBriefing(depth: "deep")
+                }
+                MissionButton(title: "Watch", icon: "dot.radiowaves.left.and.right", prominent: false) {
+                    textFieldFocused = false
+                    viewModel.requestWatchDigest()
+                }
+            }
+
+            HStack(spacing: 8) {
+                HandoffButton(name: "Penny") { viewModel.createHandoff(target: "penny") }
+                HandoffButton(name: "Raj") { viewModel.createHandoff(target: "raj") }
+                HandoffButton(name: "Leonard") { viewModel.createHandoff(target: "leonard") }
+            }
+            .disabled(viewModel.isMissionModeBusy)
+            .opacity(viewModel.isMissionModeBusy ? 0.55 : 1)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.black.opacity(0.22))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.10)))
+        )
+    }
+
+    private var watchPanel: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("WATCH")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(Color.white.opacity(0.46))
+                    .tracking(1.4)
+                Spacer()
+                Text(viewModel.watchSummary)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.orange.opacity(0.85))
+                    .lineLimit(1)
+            }
+            ForEach(viewModel.watchAlerts.prefix(3)) { alert in
+                HStack(alignment: .top, spacing: 8) {
+                    Circle()
+                        .fill(alert.tone == "blocked" ? Color.red : Color.green)
+                        .frame(width: 7, height: 7)
+                        .padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(alert.title)
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text(alert.message)
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.64))
+                            .lineLimit(2)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var messages: some View {
@@ -284,7 +389,7 @@ struct DriveChatView: View {
         if viewModel.status.localizedCaseInsensitiveContains("error") {
             return .red
         }
-        if viewModel.isListening || viewModel.isSending || viewModel.isLoadingProjects {
+        if viewModel.isListening || viewModel.isSending || viewModel.isLoadingProjects || viewModel.isMissionModeBusy {
             return .orange
         }
         return .green
@@ -384,6 +489,49 @@ struct BriefLine: View {
                 .foregroundStyle(Color.white.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+struct MissionButton: View {
+    let title: String
+    let icon: String
+    let prominent: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .black))
+                Text(title)
+                    .font(.caption.weight(.black))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .foregroundStyle(prominent ? Color.black : Color.white)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(prominent ? Color.orange : Color.white.opacity(0.10))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct HandoffButton: View {
+    let name: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Ask \(name)")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.white.opacity(0.86))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Color.white.opacity(0.08), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
