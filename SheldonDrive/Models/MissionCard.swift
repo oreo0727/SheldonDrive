@@ -268,3 +268,79 @@ struct RealityLayerSnapshot: Decodable, Equatable {
         nextMove = try container.decode(String.self, forKey: .nextMove)
     }
 }
+
+struct RepairRecord: Identifiable, Decodable, Equatable {
+    struct Classification: Decodable, Equatable {
+        let kind: String?
+        let risk: String?
+        let diagnostic: String?
+    }
+
+    struct Diagnostic: Identifiable, Decodable, Equatable {
+        let name: String
+        let ok: Bool
+        let detail: String?
+
+        var id: String { "\(name):\(detail ?? "")" }
+    }
+
+    let repairId: String
+    let captureId: String?
+    let projectId: String
+    let projectTitle: String
+    let owner: String
+    let status: String
+    let classification: Classification?
+    let summary: String
+    let operatorNote: String?
+    let diagnostics: [Diagnostic]
+    let proof: [String]
+    let createdAt: String?
+    let updatedAt: String?
+
+    var id: String { repairId }
+
+    enum CodingKeys: String, CodingKey {
+        case repairId = "repair_id"
+        case captureId = "capture_id"
+        case projectId = "project_id"
+        case projectTitle = "project_title"
+        case owner
+        case status
+        case classification
+        case summary
+        case operatorNote = "operator_note"
+        case diagnostics
+        case proof
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct RepairBaySnapshot: Decodable, Equatable {
+    let ok: Bool
+    let summary: String
+    let latest: RepairRecord?
+    let repairs: [RepairRecord]
+    let openCount: Int
+    let nextMove: String
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case summary
+        case latest
+        case repairs
+        case openCount = "open_count"
+        case nextMove = "next_move"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        summary = try container.decode(String.self, forKey: .summary)
+        latest = try? container.decode(RepairRecord.self, forKey: .latest)
+        repairs = (try? container.decode([RepairRecord].self, forKey: .repairs)) ?? []
+        openCount = (try? container.decode(Int.self, forKey: .openCount)) ?? repairs.count
+        nextMove = try container.decode(String.self, forKey: .nextMove)
+    }
+}

@@ -19,6 +19,7 @@ struct DriveChatView: View {
                         activeProjectBrief
                         missionActions
                         sheldonSightPanel
+                        repairBayPanel
                         watchPanel
                         handoffPanel
                         improvementPanel
@@ -367,6 +368,58 @@ struct DriveChatView: View {
                 selectedSightImageData = UIImage(data: data)?.jpegData(compressionQuality: 0.72) ?? data
             }
         }
+    }
+
+    private var repairBayPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("REPAIR BAY")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.white.opacity(0.46))
+                        .tracking(1.4)
+                    Text(viewModel.repairSummary)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Button {
+                    textFieldFocused = false
+                    viewModel.refreshLatestRepairDiagnostics()
+                } label: {
+                    Image(systemName: viewModel.isRepairBusy ? "hourglass" : "stethoscope")
+                        .font(.system(size: 17, weight: .black))
+                        .frame(width: 40, height: 40)
+                        .foregroundStyle(Color.black)
+                        .background(Color.orange, in: Circle())
+                }
+                .disabled(viewModel.isRepairBusy)
+                .opacity(viewModel.isRepairBusy ? 0.55 : 1)
+            }
+
+            if viewModel.repairs.isEmpty {
+                Text("Create a Sheldon Sight capture and Repair Bay will open a safe diagnostic lane automatically.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.62))
+            } else {
+                ForEach(viewModel.repairs.prefix(3)) { repair in
+                    RepairRow(repair: repair)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.orange.opacity(0.18), Color.red.opacity(0.08), Color.white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.orange.opacity(0.18)))
+        )
     }
 
     private var watchPanel: some View {
@@ -832,6 +885,71 @@ struct RealityCaptureRow: View {
         }
         .padding(10)
         .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct RepairRow: View {
+    let repair: RepairRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Text(repair.owner.prefix(1).uppercased())
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(Color.black)
+                    .frame(width: 26, height: 26)
+                    .background(statusColor, in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(repair.owner.capitalized)
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white)
+                        Text(repair.status.uppercased())
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(statusColor)
+                    }
+                    Text(repair.projectTitle)
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(Color.white.opacity(0.46))
+                        .lineLimit(1)
+                    Text(repair.operatorNote ?? repair.summary)
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.66))
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !repair.diagnostics.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(repair.diagnostics.prefix(3)) { check in
+                        Text(check.ok ? "✓ \(check.name)" : "! \(check.name)")
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(check.ok ? Color.green.opacity(0.95) : Color.orange)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.07), in: Capsule())
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var statusColor: Color {
+        switch repair.status.lowercased() {
+        case "blocked":
+            return .red
+        case "done":
+            return .green
+        case "diagnosed":
+            return .orange
+        default:
+            return Color.blue.opacity(0.95)
+        }
     }
 }
 

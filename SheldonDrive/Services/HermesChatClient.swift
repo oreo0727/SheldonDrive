@@ -60,6 +60,22 @@ struct HermesChatClient {
         let ok: Bool
         let capture: RealityCapture
         let snapshot: RealityLayerSnapshot
+        let repair: RepairRecord?
+        let repairBay: RepairBaySnapshot?
+
+        enum CodingKeys: String, CodingKey {
+            case ok
+            case capture
+            case snapshot
+            case repair
+            case repairBay = "repair_bay"
+        }
+    }
+
+    struct RepairRunResponse: Decodable {
+        let ok: Bool
+        let repair: RepairRecord
+        let snapshot: RepairBaySnapshot
     }
 
     struct ChatResponse: Decodable {
@@ -318,5 +334,27 @@ struct HermesChatClient {
             throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: body])
         }
         return try JSONDecoder().decode(RealityCaptureResponse.self, from: data)
+    }
+
+    func fetchRepairBay(endpoint: URL) async throws -> RepairBaySnapshot {
+        let url = endpoint.appending(path: "api/repair-bay")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(RepairBaySnapshot.self, from: data)
+    }
+
+    func runRepairDiagnostics(endpoint: URL, repairId: String) async throws -> RepairRunResponse {
+        var request = URLRequest(url: endpoint.appending(path: "api/repair-bay/run"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode(["repair_id": repairId])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(RepairRunResponse.self, from: data)
     }
 }

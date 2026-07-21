@@ -15,6 +15,7 @@ final class DriveChatViewModel: ObservableObject {
     @Published var isLoadingProjects = false
     @Published var isMissionModeBusy = false
     @Published var isRealityCaptureBusy = false
+    @Published var isRepairBusy = false
     @Published var isCarMode = false
     @Published var lastError = ""
     @Published var projects: [HermesProject] = []
@@ -33,6 +34,9 @@ final class DriveChatViewModel: ObservableObject {
     @Published var latestRealityCapture: RealityCapture?
     @Published var realityNote = ""
     @Published var realityMode = "field"
+    @Published var repairSummary = "Repair Bay is standing by."
+    @Published var repairs: [RepairRecord] = []
+    @Published var latestRepair: RepairRecord?
     @Published var selectedProjectId: String {
         didSet { UserDefaults.standard.set(selectedProjectId, forKey: "selectedHermesProjectId") }
     }
@@ -95,6 +99,7 @@ final class DriveChatViewModel: ObservableObject {
                 await refreshHandoffs(endpoint: endpointURL)
                 await refreshSelfImprovement(endpoint: endpointURL)
                 await refreshRealityLayer(endpoint: endpointURL)
+                await refreshRepairBay(endpoint: endpointURL)
                 status = "Projects synced"
                 lastError = ""
             } catch {
@@ -163,6 +168,19 @@ final class DriveChatViewModel: ObservableObject {
             realitySummary = "Reality Layer unavailable."
             realityCaptures = []
             latestRealityCapture = nil
+        }
+    }
+
+    private func refreshRepairBay(endpoint: URL) async {
+        do {
+            let snapshot = try await chatClient.fetchRepairBay(endpoint: endpoint)
+            repairSummary = snapshot.summary
+            repairs = snapshot.repairs
+            latestRepair = snapshot.latest
+        } catch {
+            repairSummary = "Repair Bay unavailable."
+            repairs = []
+            latestRepair = nil
         }
     }
 
@@ -362,6 +380,13 @@ final class DriveChatViewModel: ObservableObject {
                 realitySummary = response.snapshot.summary
                 realityCaptures = response.snapshot.captures
                 latestRealityCapture = response.capture
+                if let repairBay = response.repairBay {
+                    repairSummary = repairBay.summary
+                    repairs = repairBay.repairs
+                    latestRepair = response.repair ?? repairBay.latest
+                } else {
+                    await refreshRepairBay(endpoint: endpointURL)
+                }
                 realityNote = ""
                 let target = response.capture.route?.target.capitalized ?? "Sheldon"
                 let reply = "\(target) received Sheldon Sight: \(response.capture.summary)"
@@ -376,6 +401,36 @@ final class DriveChatViewModel: ObservableObject {
                 status = "Sight error"
             }
             isRealityCaptureBusy = false
+        }
+    }
+
+    func refreshLatestRepairDiagnostics() {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        guard let repair = latestRepair ?? repairs.first else {
+            lastError = "No repair lane is open yet."
+            return
+        }
+        isRepairBusy = true
+        status = "Repair check"
+        Task {
+            do {
+                let response = try await chatClient.runRepairDiagnostics(endpoint: endpointURL, repairId: repair.repairId)
+                repairSummary = response.snapshot.summary
+                repairs = response.snapshot.repairs
+                latestRepair = response.repair
+                let passed = response.repair.diagnostics.filter(\.ok).count
+                append(.assistant, "Repair Bay refreshed \(response.repair.owner.capitalized)'s diagnostics: \(passed)/\(response.repair.diagnostics.count) checks passed.")
+                voice.speak("Repair diagnostics refreshed.")
+                status = "Repair checked"
+                lastError = ""
+            } catch {
+                lastError = "Repair check failed: \(error.localizedDescription)"
+                status = "Repair error"
+            }
+            isRepairBusy = false
         }
     }
 
