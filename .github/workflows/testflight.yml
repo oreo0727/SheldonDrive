@@ -119,8 +119,10 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet PyJWT cryptography
-          python3 - <<'PY'
+          python3 -m venv build/appstoreconnect-venv
+          source build/appstoreconnect-venv/bin/activate
+          python -m pip install --quiet PyJWT cryptography
+          python - <<'PY'
           import json
           import os
           import time
