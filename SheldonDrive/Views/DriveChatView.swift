@@ -19,6 +19,10 @@ struct DriveChatView: View {
                     .padding(.top, 18)
                     .padding(.bottom, 12)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture {
+                    textFieldFocused = false
+                }
                 controls
             }
         }
@@ -26,6 +30,15 @@ struct DriveChatView: View {
         .onAppear {
             viewModel.requestPermissions()
             viewModel.refreshProjects()
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    textFieldFocused = false
+                }
+                .font(.body.weight(.bold))
+            }
         }
     }
 
@@ -186,11 +199,22 @@ struct DriveChatView: View {
                     MessageBubble(message: message)
                         .id(message.id)
                 }
+                if viewModel.isSending {
+                    ThinkingBubble()
+                        .id("thinking")
+                }
             }
-            .onChange(of: viewModel.messages.count) { _ in
-                guard let last = viewModel.messages.last else { return }
+            .onChange(of: viewModel.messages.count + (viewModel.isSending ? 1 : 0)) { _ in
+                let target: AnyHashable
+                if viewModel.isSending {
+                    target = "thinking"
+                } else if let last = viewModel.messages.last {
+                    target = last.id
+                } else {
+                    return
+                }
                 withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
-                    proxy.scrollTo(last.id, anchor: .bottom)
+                    proxy.scrollTo(target, anchor: .bottom)
                 }
             }
         }
@@ -213,9 +237,11 @@ struct DriveChatView: View {
                 .background(Color.black.opacity(0.30), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.10)))
                 .focused($textFieldFocused)
+                .submitLabel(.send)
 
             HStack(spacing: 12) {
                 Button {
+                    textFieldFocused = false
                     viewModel.toggleListening()
                 } label: {
                     Label(viewModel.isListening ? "Listening" : "Talk", systemImage: viewModel.isListening ? "waveform.circle.fill" : "mic.circle.fill")
@@ -226,6 +252,7 @@ struct DriveChatView: View {
                 .buttonStyle(PrimaryDriveButtonStyle(active: viewModel.isListening))
 
                 Button {
+                    textFieldFocused = false
                     viewModel.sendTypedMessage()
                 } label: {
                     Image(systemName: viewModel.isSending ? "hourglass" : "paperplane.fill")
@@ -261,6 +288,48 @@ struct DriveChatView: View {
             return .orange
         }
         return .green
+    }
+}
+
+struct ThinkingBubble: View {
+    @State private var phase = 0
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Sheldon")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.orange)
+                HStack(spacing: 7) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .fill(Color.orange.opacity(0.92))
+                            .frame(width: 8, height: 8)
+                            .scaleEffect(phase == index ? 1.35 : 0.72)
+                            .opacity(phase == index ? 1 : 0.45)
+                            .animation(.easeInOut(duration: 0.34), value: phase)
+                    }
+                    Text("thinking")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.64))
+                        .padding(.leading, 4)
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.orange.opacity(0.18)))
+            )
+            Spacer(minLength: 42)
+        }
+        .padding(.horizontal, 2)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(360))
+                phase = (phase + 1) % 3
+            }
+        }
     }
 }
 

@@ -50,7 +50,7 @@ struct HermesChatClient {
         var request = URLRequest(url: chatURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 45
+        request.timeoutInterval = 150
         let recentMessages = messages.suffix(12).map {
             OutgoingMessage(role: $0.role.rawValue, content: $0.content)
         }

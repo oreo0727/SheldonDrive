@@ -160,7 +160,7 @@ final class DriveChatViewModel: ObservableObject {
 
         append(.user, cleaned)
         isSending = true
-        status = "Contacting Sheldon"
+        status = "Sheldon is thinking"
         lastError = ""
 
         do {
@@ -177,7 +177,7 @@ final class DriveChatViewModel: ObservableObject {
             }
             status = response.fastPath == true ? "Fast route" : "Ready"
         } catch {
-            let message = "I could not reach Hermes: \(error.localizedDescription)"
+            let message = "I could not reach Hermes yet: \(error.localizedDescription)"
             append(.assistant, message)
             voice.speak(message)
             status = "Connection error"
