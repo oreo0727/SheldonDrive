@@ -1,8 +1,12 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct DriveChatView: View {
     @StateObject private var viewModel = DriveChatViewModel()
     @FocusState private var textFieldFocused: Bool
+    @State private var selectedSightPhoto: PhotosPickerItem?
+    @State private var selectedSightImageData: Data?
 
     var body: some View {
         ZStack {
@@ -14,6 +18,7 @@ struct DriveChatView: View {
                         projectSelector
                         activeProjectBrief
                         missionActions
+                        sheldonSightPanel
                         watchPanel
                         handoffPanel
                         improvementPanel
@@ -261,6 +266,107 @@ struct DriveChatView: View {
                 .fill(Color.black.opacity(0.22))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.10)))
         )
+    }
+
+    private var sheldonSightPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("SHELDON SIGHT")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.white.opacity(0.46))
+                        .tracking(1.4)
+                    Text("Reality Layer")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                }
+                Spacer()
+                Text(viewModel.isRealityCaptureBusy ? "CAPTURING" : "READY")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(viewModel.isRealityCaptureBusy ? Color.orange : Color.green)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+            }
+
+            Text(viewModel.realitySummary)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.white.opacity(0.68))
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextEditor(text: $viewModel.realityNote)
+                .frame(minHeight: 68, maxHeight: 104)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .foregroundStyle(.white)
+                .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.10)))
+                .focused($textFieldFocused)
+
+            Picker("Mode", selection: $viewModel.realityMode) {
+                Text("Field").tag("field")
+                Text("Screenshot").tag("screenshot")
+                Text("Bug").tag("bug")
+                Text("Idea").tag("idea")
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 10) {
+                PhotosPicker(selection: $selectedSightPhoto, matching: .images) {
+                    Label(selectedSightImageData == nil ? "Add Image" : "Image Ready", systemImage: selectedSightImageData == nil ? "photo.badge.plus" : "checkmark.circle.fill")
+                        .font(.caption.weight(.black))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .foregroundStyle(.white)
+                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+
+                Button {
+                    textFieldFocused = false
+                    viewModel.captureReality(imageData: selectedSightImageData)
+                    selectedSightImageData = nil
+                    selectedSightPhoto = nil
+                } label: {
+                    Label("Capture", systemImage: "location.viewfinder")
+                        .font(.caption.weight(.black))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .foregroundStyle(Color.black)
+                        .background(Color.orange, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .disabled(viewModel.isRealityCaptureBusy)
+                .opacity(viewModel.isRealityCaptureBusy ? 0.55 : 1)
+            }
+
+            if let latest = viewModel.latestRealityCapture {
+                RealityCaptureRow(capture: latest)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.18), Color.orange.opacity(0.10), Color.white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.blue.opacity(0.20)))
+        )
+        .onChange(of: selectedSightPhoto) { item in
+            guard let item else {
+                selectedSightImageData = nil
+                return
+            }
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self) else {
+                    selectedSightImageData = nil
+                    return
+                }
+                selectedSightImageData = UIImage(data: data)?.jpegData(compressionQuality: 0.72) ?? data
+            }
+        }
     }
 
     private var watchPanel: some View {
@@ -685,6 +791,47 @@ struct HandoffRow: View {
         default:
             return Color.blue.opacity(0.95)
         }
+    }
+}
+
+struct RealityCaptureRow: View {
+    let capture: RealityCapture
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: capture.attachments.isEmpty ? "waveform.path.ecg" : "photo.on.rectangle.angled")
+                .font(.caption.weight(.black))
+                .foregroundStyle(Color.black)
+                .frame(width: 26, height: 26)
+                .background(Color.blue.opacity(0.95), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(capture.route?.target.capitalized ?? "Sheldon")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                    Text(capture.status.uppercased())
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.green)
+                }
+                Text(capture.projectTitle)
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(Color.white.opacity(0.46))
+                    .lineLimit(1)
+                Text(capture.note.isEmpty ? capture.summary : capture.note)
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.66))
+                    .lineLimit(2)
+                if !capture.attachments.isEmpty {
+                    Text("\(capture.attachments.count) image attached")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.orange)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

@@ -192,3 +192,79 @@ struct SelfImprovementSnapshot: Decodable, Equatable {
         nextMove = try container.decode(String.self, forKey: .nextMove)
     }
 }
+
+struct RealityCapture: Identifiable, Decodable, Equatable {
+    struct Route: Decodable, Equatable {
+        let target: String
+        let reason: String?
+    }
+
+    struct Evidence: Decodable, Equatable {
+        let name: String?
+        let mimeType: String?
+        let sizeBytes: Int?
+        let storedPath: String?
+        let analysis: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case mimeType = "mime_type"
+            case sizeBytes = "size_bytes"
+            case storedPath = "stored_path"
+            case analysis
+        }
+    }
+
+    let captureId: String
+    let status: String
+    let mode: String
+    let projectId: String
+    let projectTitle: String
+    let note: String
+    let summary: String
+    let route: Route?
+    let attachments: [Evidence]
+    let createdAt: String?
+    let updatedAt: String?
+
+    var id: String { captureId }
+
+    enum CodingKeys: String, CodingKey {
+        case captureId = "capture_id"
+        case status
+        case mode
+        case projectId = "project_id"
+        case projectTitle = "project_title"
+        case note
+        case summary
+        case route
+        case attachments
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct RealityLayerSnapshot: Decodable, Equatable {
+    let ok: Bool
+    let summary: String
+    let latest: RealityCapture?
+    let captures: [RealityCapture]
+    let nextMove: String
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case summary
+        case latest
+        case captures
+        case nextMove = "next_move"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        summary = try container.decode(String.self, forKey: .summary)
+        latest = try? container.decode(RealityCapture.self, forKey: .latest)
+        captures = (try? container.decode([RealityCapture].self, forKey: .captures)) ?? []
+        nextMove = try container.decode(String.self, forKey: .nextMove)
+    }
+}

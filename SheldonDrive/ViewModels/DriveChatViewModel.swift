@@ -14,6 +14,7 @@ final class DriveChatViewModel: ObservableObject {
     @Published var isSending = false
     @Published var isLoadingProjects = false
     @Published var isMissionModeBusy = false
+    @Published var isRealityCaptureBusy = false
     @Published var isCarMode = false
     @Published var lastError = ""
     @Published var projects: [HermesProject] = []
@@ -27,6 +28,11 @@ final class DriveChatViewModel: ObservableObject {
     @Published var improvementProposals: [SelfImprovementProposal] = []
     @Published var latestImprovementProposal: SelfImprovementProposal?
     @Published var selfImprovementNextMove = "Sync Sheldon to inspect the loop."
+    @Published var realitySummary = "Sheldon Sight is ready."
+    @Published var realityCaptures: [RealityCapture] = []
+    @Published var latestRealityCapture: RealityCapture?
+    @Published var realityNote = ""
+    @Published var realityMode = "field"
     @Published var selectedProjectId: String {
         didSet { UserDefaults.standard.set(selectedProjectId, forKey: "selectedHermesProjectId") }
     }
@@ -88,6 +94,7 @@ final class DriveChatViewModel: ObservableObject {
                 await refreshWatch(endpoint: endpointURL)
                 await refreshHandoffs(endpoint: endpointURL)
                 await refreshSelfImprovement(endpoint: endpointURL)
+                await refreshRealityLayer(endpoint: endpointURL)
                 status = "Projects synced"
                 lastError = ""
             } catch {
@@ -143,6 +150,19 @@ final class DriveChatViewModel: ObservableObject {
             weakBrainCards = []
             improvementProposals = []
             latestImprovementProposal = nil
+        }
+    }
+
+    private func refreshRealityLayer(endpoint: URL) async {
+        do {
+            let snapshot = try await chatClient.fetchRealityLayer(endpoint: endpoint)
+            realitySummary = snapshot.summary
+            realityCaptures = snapshot.captures
+            latestRealityCapture = snapshot.latest
+        } catch {
+            realitySummary = "Reality Layer unavailable."
+            realityCaptures = []
+            latestRealityCapture = nil
         }
     }
 
@@ -314,6 +334,48 @@ final class DriveChatViewModel: ObservableObject {
                 status = "Improve error"
             }
             isMissionModeBusy = false
+        }
+    }
+
+    func captureReality(imageData: Data? = nil) {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        let note = realityNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !note.isEmpty || imageData != nil else {
+            lastError = "Add a Sheldon Sight note or image first."
+            return
+        }
+        let projectId = selectedMissionCard?.projectId ?? selectedProject?.projectId ?? selectedProjectId
+        isRealityCaptureBusy = true
+        status = "Capturing sight"
+        Task {
+            do {
+                let response = try await chatClient.captureReality(
+                    endpoint: endpointURL,
+                    projectId: projectId,
+                    mode: realityMode,
+                    note: note,
+                    imageData: imageData
+                )
+                realitySummary = response.snapshot.summary
+                realityCaptures = response.snapshot.captures
+                latestRealityCapture = response.capture
+                realityNote = ""
+                let target = response.capture.route?.target.capitalized ?? "Sheldon"
+                let reply = "\(target) received Sheldon Sight: \(response.capture.summary)"
+                append(.assistant, reply)
+                voice.speak("\(target) received the field capture.")
+                await refreshHandoffs(endpoint: endpointURL)
+                await refreshWatch(endpoint: endpointURL)
+                status = "Sight routed"
+                lastError = ""
+            } catch {
+                lastError = "Sight capture failed: \(error.localizedDescription)"
+                status = "Sight error"
+            }
+            isRealityCaptureBusy = false
         }
     }
 
