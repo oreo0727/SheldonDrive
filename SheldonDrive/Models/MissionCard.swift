@@ -67,3 +67,128 @@ struct WatchAlert: Identifiable, Decodable, Equatable {
         case message
     }
 }
+
+struct MissionHandoff: Identifiable, Decodable, Equatable {
+    struct Event: Identifiable, Decodable, Equatable {
+        let at: String
+        let status: String
+        let note: String?
+
+        var id: String { "\(at):\(status):\(note ?? "")" }
+    }
+
+    let handoffId: String
+    let projectId: String
+    let projectTitle: String?
+    let target: String
+    let instruction: String
+    let status: String
+    let createdAt: String?
+    let updatedAt: String?
+    let lastNote: String?
+    let events: [Event]?
+
+    var id: String { handoffId }
+
+    enum CodingKeys: String, CodingKey {
+        case handoffId = "handoff_id"
+        case projectId = "project_id"
+        case projectTitle = "project_title"
+        case target
+        case instruction
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case lastNote = "last_note"
+        case events
+    }
+}
+
+struct MissionBrainCardScore: Identifiable, Decodable, Equatable {
+    let projectId: String
+    let title: String
+    let score: Double
+    let missing: [String]
+    let recommendation: String
+
+    var id: String { projectId }
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case title
+        case score
+        case missing
+        case recommendation
+    }
+}
+
+struct SelfImprovementProposal: Identifiable, Decodable, Equatable {
+    struct NextExperiment: Decodable, Equatable {
+        let name: String?
+        let operatorPrompt: String?
+        let successSignal: String?
+        let rollback: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case operatorPrompt = "operator_prompt"
+            case successSignal = "success_signal"
+            case rollback
+        }
+    }
+
+    let proposalId: String
+    let status: String?
+    let focus: String
+    let hypothesis: String
+    let experiments: [String]
+    let weakestCards: [MissionBrainCardScore]?
+    let nextExperiment: NextExperiment?
+    let guardrails: [String]
+    let lastNote: String?
+
+    var id: String { proposalId }
+
+    enum CodingKeys: String, CodingKey {
+        case proposalId = "proposal_id"
+        case status
+        case focus
+        case hypothesis
+        case experiments
+        case weakestCards = "weakest_cards"
+        case nextExperiment = "next_experiment"
+        case guardrails
+        case lastNote = "last_note"
+    }
+}
+
+struct SelfImprovementSnapshot: Decodable, Equatable {
+    let ok: Bool
+    let summary: String
+    let averageScore: Double
+    let weakCards: [MissionBrainCardScore]
+    let proposals: [SelfImprovementProposal]
+    let latest: SelfImprovementProposal?
+    let nextMove: String
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case summary
+        case averageScore = "average_score"
+        case weakCards = "weak_cards"
+        case proposals
+        case latest
+        case nextMove = "next_move"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        summary = try container.decode(String.self, forKey: .summary)
+        averageScore = try container.decode(Double.self, forKey: .averageScore)
+        weakCards = try container.decode([MissionBrainCardScore].self, forKey: .weakCards)
+        proposals = try container.decode([SelfImprovementProposal].self, forKey: .proposals)
+        latest = try? container.decode(SelfImprovementProposal.self, forKey: .latest)
+        nextMove = try container.decode(String.self, forKey: .nextMove)
+    }
+}

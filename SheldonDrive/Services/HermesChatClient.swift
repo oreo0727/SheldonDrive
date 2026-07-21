@@ -24,6 +24,12 @@ struct HermesChatClient {
         let ok: Bool
         let summary: String
         let alerts: [WatchAlert]
+        let handoffs: [MissionHandoff]?
+    }
+
+    struct HandoffsResponse: Decodable {
+        let ok: Bool
+        let handoffs: [MissionHandoff]
     }
 
     struct HandoffResponse: Decodable {
@@ -43,6 +49,11 @@ struct HermesChatClient {
 
         let ok: Bool
         let handoff: Handoff
+    }
+
+    struct SelfImprovementProposalResponse: Decodable {
+        let ok: Bool
+        let proposal: SelfImprovementProposal
     }
 
     struct ChatResponse: Decodable {
@@ -164,6 +175,15 @@ struct HermesChatClient {
         return try JSONDecoder().decode(WatchResponse.self, from: data)
     }
 
+    func fetchHandoffs(endpoint: URL) async throws -> [MissionHandoff] {
+        let url = endpoint.appending(path: "api/handoffs")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(HandoffsResponse.self, from: data).handoffs
+    }
+
     func createHandoff(endpoint: URL, projectId: String, target: String, instruction: String) async throws -> HandoffResponse {
         var request = URLRequest(url: endpoint.appending(path: "api/handoff"))
         request.httpMethod = "POST"
@@ -179,5 +199,44 @@ struct HermesChatClient {
             throw URLError(.badServerResponse)
         }
         return try JSONDecoder().decode(HandoffResponse.self, from: data)
+    }
+
+    func fetchSelfImprovement(endpoint: URL) async throws -> SelfImprovementSnapshot {
+        let url = endpoint.appending(path: "api/self-improvement")
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(SelfImprovementSnapshot.self, from: data)
+    }
+
+    func proposeSelfImprovement(endpoint: URL, focus: String) async throws -> SelfImprovementProposalResponse {
+        var request = URLRequest(url: endpoint.appending(path: "api/self-improvement/propose"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode(["focus": focus])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(SelfImprovementProposalResponse.self, from: data)
+    }
+
+    func updateSelfImprovementStatus(endpoint: URL, proposalId: String, status: String, note: String) async throws -> SelfImprovementProposalResponse {
+        var request = URLRequest(url: endpoint.appending(path: "api/self-improvement/status"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONEncoder().encode([
+            "proposal_id": proposalId,
+            "status": status,
+            "note": note
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(SelfImprovementProposalResponse.self, from: data)
     }
 }

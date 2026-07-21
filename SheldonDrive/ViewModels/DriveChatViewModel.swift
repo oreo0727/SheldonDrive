@@ -20,6 +20,13 @@ final class DriveChatViewModel: ObservableObject {
     @Published var missionCards: [MissionCard] = []
     @Published var watchAlerts: [WatchAlert] = []
     @Published var watchSummary = "Watch mode is idle."
+    @Published var handoffs: [MissionHandoff] = []
+    @Published var selfImprovementSummary = "Mission brain has not synced yet."
+    @Published var missionBrainScore: Double = 0
+    @Published var weakBrainCards: [MissionBrainCardScore] = []
+    @Published var improvementProposals: [SelfImprovementProposal] = []
+    @Published var latestImprovementProposal: SelfImprovementProposal?
+    @Published var selfImprovementNextMove = "Sync Sheldon to inspect the loop."
     @Published var selectedProjectId: String {
         didSet { UserDefaults.standard.set(selectedProjectId, forKey: "selectedHermesProjectId") }
     }
@@ -79,6 +86,8 @@ final class DriveChatViewModel: ObservableObject {
                 }
                 await refreshMissionCards(endpoint: endpointURL)
                 await refreshWatch(endpoint: endpointURL)
+                await refreshHandoffs(endpoint: endpointURL)
+                await refreshSelfImprovement(endpoint: endpointURL)
                 status = "Projects synced"
                 lastError = ""
             } catch {
@@ -102,9 +111,38 @@ final class DriveChatViewModel: ObservableObject {
             let response = try await chatClient.fetchWatch(endpoint: endpoint)
             watchSummary = response.summary
             watchAlerts = response.alerts
+            if let handoffs = response.handoffs {
+                self.handoffs = handoffs
+            }
         } catch {
             watchSummary = "Watch digest unavailable."
             watchAlerts = []
+        }
+    }
+
+    private func refreshHandoffs(endpoint: URL) async {
+        do {
+            handoffs = try await chatClient.fetchHandoffs(endpoint: endpoint)
+        } catch {
+            handoffs = []
+        }
+    }
+
+    private func refreshSelfImprovement(endpoint: URL) async {
+        do {
+            let snapshot = try await chatClient.fetchSelfImprovement(endpoint: endpoint)
+            selfImprovementSummary = snapshot.summary
+            missionBrainScore = snapshot.averageScore
+            weakBrainCards = snapshot.weakCards
+            improvementProposals = snapshot.proposals
+            latestImprovementProposal = snapshot.latest
+            selfImprovementNextMove = snapshot.nextMove
+        } catch {
+            selfImprovementSummary = "Self-improvement loop unavailable."
+            missionBrainScore = 0
+            weakBrainCards = []
+            improvementProposals = []
+            latestImprovementProposal = nil
         }
     }
 
@@ -206,11 +244,74 @@ final class DriveChatViewModel: ObservableObject {
                 let reply = "Queued handoff to \(response.handoff.target): \(response.handoff.instruction)"
                 append(.assistant, reply)
                 voice.speak("Queued handoff to \(response.handoff.target).")
+                await refreshHandoffs(endpoint: endpointURL)
+                await refreshWatch(endpoint: endpointURL)
                 status = "Handoff queued"
                 lastError = ""
             } catch {
                 lastError = "Handoff failed: \(error.localizedDescription)"
                 status = "Handoff error"
+            }
+            isMissionModeBusy = false
+        }
+    }
+
+    func proposeSelfImprovement() {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        isMissionModeBusy = true
+        status = "Inspecting loop"
+        Task {
+            do {
+                let focus = "mobile operator loop for \(selectedProjectTitle)"
+                let response = try await chatClient.proposeSelfImprovement(endpoint: endpointURL, focus: focus)
+                latestImprovementProposal = response.proposal
+                improvementProposals.insert(response.proposal, at: 0)
+                let experiment = response.proposal.nextExperiment?.operatorPrompt ?? response.proposal.hypothesis
+                let reply = "Self-improvement proposal: \(response.proposal.focus)\n\(experiment)"
+                append(.assistant, reply)
+                voice.speak("I created a self-improvement proposal.")
+                await refreshSelfImprovement(endpoint: endpointURL)
+                status = "Proposal ready"
+                lastError = ""
+            } catch {
+                lastError = "Improvement proposal failed: \(error.localizedDescription)"
+                status = "Improve error"
+            }
+            isMissionModeBusy = false
+        }
+    }
+
+    func acceptLatestImprovement() {
+        guard let endpointURL else {
+            lastError = "Enter a valid Hermes URL."
+            return
+        }
+        guard let proposal = latestImprovementProposal else {
+            lastError = "Generate a proposal first."
+            return
+        }
+        isMissionModeBusy = true
+        status = "Accepting loop"
+        Task {
+            do {
+                let response = try await chatClient.updateSelfImprovementStatus(
+                    endpoint: endpointURL,
+                    proposalId: proposal.proposalId,
+                    status: "accepted",
+                    note: "Operator accepted from Sheldon Drive."
+                )
+                latestImprovementProposal = response.proposal
+                await refreshSelfImprovement(endpoint: endpointURL)
+                append(.assistant, "Accepted self-improvement loop: \(response.proposal.focus)")
+                voice.speak("Accepted the self-improvement loop.")
+                status = "Loop accepted"
+                lastError = ""
+            } catch {
+                lastError = "Could not accept proposal: \(error.localizedDescription)"
+                status = "Improve error"
             }
             isMissionModeBusy = false
         }

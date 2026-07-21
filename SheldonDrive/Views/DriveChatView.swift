@@ -15,6 +15,8 @@ struct DriveChatView: View {
                         activeProjectBrief
                         missionActions
                         watchPanel
+                        handoffPanel
+                        improvementPanel
                         messages
                     }
                     .padding(.horizontal, 18)
@@ -297,6 +299,108 @@ struct DriveChatView: View {
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
+    private var handoffPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("AGENT HANDOFFS")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(Color.white.opacity(0.46))
+                    .tracking(1.4)
+                Spacer()
+                Text("\(viewModel.handoffs.prefix(4).count) visible")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.white.opacity(0.54))
+            }
+
+            if viewModel.handoffs.isEmpty {
+                Text("No open handoffs yet. Ask Penny, Raj, or Leonard and Sheldon will keep the receipt.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.62))
+            } else {
+                ForEach(viewModel.handoffs.prefix(4)) { handoff in
+                    HandoffRow(handoff: handoff)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var improvementPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("SELF-IMPROVEMENT")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(Color.white.opacity(0.46))
+                        .tracking(1.4)
+                    Text(viewModel.selfImprovementSummary)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                }
+                Spacer()
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.12), lineWidth: 7)
+                    Circle()
+                        .trim(from: 0, to: max(0.02, min(viewModel.missionBrainScore, 1)))
+                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(Int(viewModel.missionBrainScore * 100))")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 52, height: 52)
+            }
+
+            if let proposal = viewModel.latestImprovementProposal {
+                Text(proposal.nextExperiment?.operatorPrompt ?? proposal.hypothesis)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text((proposal.status ?? "proposed").uppercased())
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.14), in: Capsule())
+            } else {
+                Text(viewModel.selfImprovementNextMove)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.62))
+            }
+
+            if let weak = viewModel.weakBrainCards.first {
+                BriefLine(label: "Weakest Signal", value: "\(weak.title): \(weak.recommendation)")
+            }
+
+            HStack(spacing: 10) {
+                MissionButton(title: "Improve", icon: "brain.head.profile", prominent: true) {
+                    textFieldFocused = false
+                    viewModel.proposeSelfImprovement()
+                }
+                MissionButton(title: "Accept", icon: "checkmark.seal.fill", prominent: false) {
+                    textFieldFocused = false
+                    viewModel.acceptLatestImprovement()
+                }
+            }
+            .disabled(viewModel.isMissionModeBusy)
+            .opacity(viewModel.isMissionModeBusy ? 0.55 : 1)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.orange.opacity(0.16), Color.blue.opacity(0.12), Color.white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.orange.opacity(0.18)))
+        )
+    }
+
     private var messages: some View {
         ScrollViewReader { proxy in
             LazyVStack(spacing: 12) {
@@ -532,6 +636,55 @@ struct HandoffButton: View {
                 .background(Color.white.opacity(0.08), in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct HandoffRow: View {
+    let handoff: MissionHandoff
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(handoff.target.prefix(1).uppercased())
+                .font(.caption.weight(.black))
+                .foregroundStyle(Color.black)
+                .frame(width: 24, height: 24)
+                .background(statusColor, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(handoff.target.capitalized)
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white)
+                    Text(handoff.status.uppercased())
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(statusColor)
+                }
+                Text(handoff.projectTitle ?? handoff.projectId)
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(Color.white.opacity(0.46))
+                    .lineLimit(1)
+                Text(handoff.lastNote ?? handoff.instruction)
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.64))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var statusColor: Color {
+        switch handoff.status.lowercased() {
+        case "blocked":
+            return .red
+        case "done":
+            return .green
+        case "working":
+            return .orange
+        default:
+            return Color.blue.opacity(0.95)
+        }
     }
 }
 
