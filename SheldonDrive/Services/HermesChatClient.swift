@@ -100,6 +100,7 @@ struct HermesChatClient {
     struct ChatRequest: Encodable {
         let profile: String
         let fast: Bool
+        let voice: Bool
         let projectId: String
         let sessionId: String
         let messages: [OutgoingMessage]
@@ -107,6 +108,7 @@ struct HermesChatClient {
         enum CodingKeys: String, CodingKey {
             case profile
             case fast
+            case voice
             case projectId = "project_id"
             case sessionId = "session_id"
             case messages
@@ -143,20 +145,31 @@ struct HermesChatClient {
         endpoint: URL,
         sessionId: String,
         projectId: String,
-        messages: [ChatMessage]
+        messages: [ChatMessage],
+        voiceMode: Bool = false
     ) async throws -> ChatResponse {
         let chatURL = endpoint.appending(path: "api/chat")
         var request = URLRequest(url: chatURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 150
-        let recentMessages = messages.suffix(12).map {
+        var recentMessages = messages.suffix(12).map {
             OutgoingMessage(role: $0.role.rawValue, content: $0.content)
+        }
+        if voiceMode {
+            recentMessages.insert(
+                OutgoingMessage(
+                    role: "system",
+                    content: "You are Sheldon speaking aloud in a car. Reply in 1-3 short sentences, no markdown, no code blocks, no dashboard dump unless explicitly requested. Prefer the active project's next action and first blocker."
+                ),
+                at: 0
+            )
         }
         request.httpBody = try JSONEncoder().encode(
             ChatRequest(
                 profile: "operator",
                 fast: true,
+                voice: voiceMode,
                 projectId: projectId,
                 sessionId: sessionId,
                 messages: recentMessages

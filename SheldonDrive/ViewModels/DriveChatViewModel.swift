@@ -17,6 +17,26 @@ final class DriveChatViewModel: ObservableObject {
     @Published var isRealityCaptureBusy = false
     @Published var isRepairBusy = false
     @Published var isCarMode = false
+    @Published var isHandsFreeMode: Bool {
+        didSet {
+            UserDefaults.standard.set(isHandsFreeMode, forKey: "sheldonHandsFreeMode")
+            if isHandsFreeMode {
+                isCarMode = true
+                status = "Hands-free ready"
+                if !isListening && !isSending {
+                    startListeningTurn()
+                }
+            } else {
+                resumeListenTask?.cancel()
+                resumeListenTask = nil
+                if isListening {
+                    speech.stop()
+                    isListening = false
+                }
+                status = "Ready"
+            }
+        }
+    }
     @Published var lastError = ""
     @Published var projects: [HermesProject] = []
     @Published var missionCards: [MissionCard] = []
@@ -45,10 +65,12 @@ final class DriveChatViewModel: ObservableObject {
     private let speech = SpeechController()
     private let voice = VoicePlayback()
     private var sessionId = ""
+    private var resumeListenTask: Task<Void, Never>?
 
     init() {
         endpointText = UserDefaults.standard.string(forKey: "hermesEndpoint") ?? "http://100.71.8.121:8799"
         selectedProjectId = UserDefaults.standard.string(forKey: "selectedHermesProjectId") ?? ""
+        isHandsFreeMode = UserDefaults.standard.bool(forKey: "sheldonHandsFreeMode")
     }
 
     var endpointURL: URL? {
@@ -73,7 +95,10 @@ final class DriveChatViewModel: ObservableObject {
         Task {
             let allowed = await speech.requestPermissions()
             if allowed {
-                status = "Ready"
+                status = isHandsFreeMode ? "Hands-free ready" : "Ready"
+                if isHandsFreeMode && !isListening && !isSending {
+                    startListeningTurn()
+                }
             } else {
                 status = "Permission needed"
                 lastError = "Enable microphone and speech recognition in Settings."
@@ -220,7 +245,7 @@ final class DriveChatViewModel: ObservableObject {
                     upsertMissionCard(card)
                 }
                 append(.assistant, response.briefing)
-                voice.speak(response.briefing)
+                speakAssistant(response.briefing)
                 status = "Briefed"
                 lastError = ""
             } catch {
@@ -246,7 +271,7 @@ final class DriveChatViewModel: ObservableObject {
                 let lines = [response.summary] + response.alerts.prefix(3).map { "\($0.title): \($0.message)" }
                 let digest = lines.joined(separator: "\n")
                 append(.assistant, digest)
-                voice.speak(response.summary)
+                speakAssistant(response.summary)
                 status = "Watch updated"
                 lastError = ""
             } catch {
@@ -281,7 +306,7 @@ final class DriveChatViewModel: ObservableObject {
                 )
                 let reply = "Queued handoff to \(response.handoff.target): \(response.handoff.instruction)"
                 append(.assistant, reply)
-                voice.speak("Queued handoff to \(response.handoff.target).")
+                speakAssistant("Queued handoff to \(response.handoff.target).")
                 await refreshHandoffs(endpoint: endpointURL)
                 await refreshWatch(endpoint: endpointURL)
                 status = "Handoff queued"
@@ -310,7 +335,7 @@ final class DriveChatViewModel: ObservableObject {
                 let experiment = response.proposal.nextExperiment?.operatorPrompt ?? response.proposal.hypothesis
                 let reply = "Self-improvement proposal: \(response.proposal.focus)\n\(experiment)"
                 append(.assistant, reply)
-                voice.speak("I created a self-improvement proposal.")
+                speakAssistant("I created a self-improvement proposal.")
                 await refreshSelfImprovement(endpoint: endpointURL)
                 status = "Proposal ready"
                 lastError = ""
@@ -344,7 +369,7 @@ final class DriveChatViewModel: ObservableObject {
                 latestImprovementProposal = response.proposal
                 await refreshSelfImprovement(endpoint: endpointURL)
                 append(.assistant, "Accepted self-improvement loop: \(response.proposal.focus)")
-                voice.speak("Accepted the self-improvement loop.")
+                speakAssistant("Accepted the self-improvement loop.")
                 status = "Loop accepted"
                 lastError = ""
             } catch {
@@ -391,7 +416,7 @@ final class DriveChatViewModel: ObservableObject {
                 let target = response.capture.route?.target.capitalized ?? "Sheldon"
                 let reply = "\(target) received Sheldon Sight: \(response.capture.summary)"
                 append(.assistant, reply)
-                voice.speak("\(target) received the field capture.")
+                speakAssistant("\(target) received the field capture.")
                 await refreshHandoffs(endpoint: endpointURL)
                 await refreshWatch(endpoint: endpointURL)
                 status = "Sight routed"
@@ -423,7 +448,7 @@ final class DriveChatViewModel: ObservableObject {
                 latestRepair = response.repair
                 let passed = response.repair.diagnostics.filter(\.ok).count
                 append(.assistant, "Repair Bay refreshed \(response.repair.owner.capitalized)'s diagnostics: \(passed)/\(response.repair.diagnostics.count) checks passed.")
-                voice.speak("Repair diagnostics refreshed.")
+                speakAssistant("Repair diagnostics refreshed.")
                 status = "Repair checked"
                 lastError = ""
             } catch {
@@ -450,9 +475,17 @@ final class DriveChatViewModel: ObservableObject {
             return
         }
 
+        startListeningTurn()
+    }
+
+    private func startListeningTurn() {
+        resumeListenTask?.cancel()
+        resumeListenTask = nil
+        voice.stop()
+
         lastError = ""
         transcript = ""
-        status = "Listening"
+        status = isHandsFreeMode ? "Listening hands-free" : "Listening"
         isListening = true
         speech.start(
             onPartial: { [weak self] partial in
@@ -487,11 +520,35 @@ final class DriveChatViewModel: ObservableObject {
 
     func repeatLastSheldonReply() {
         guard let reply = messages.last(where: { $0.role == .assistant }) else { return }
-        voice.speak(reply.content)
+        speakAssistant(reply.content)
     }
 
     func stopSpeaking() {
+        isHandsFreeMode = false
         voice.stop()
+    }
+
+    private func speakAssistant(_ text: String) {
+        let completion: (() -> Void)? = isHandsFreeMode ? { [weak self] in
+            Task { @MainActor in
+                self?.resumeHandsFreeListening()
+            }
+        } : nil
+        voice.speak(text, onFinished: completion)
+    }
+
+    private func resumeHandsFreeListening() {
+        guard isHandsFreeMode else { return }
+        guard !isListening && !isSending && !isMissionModeBusy && !isRealityCaptureBusy && !isRepairBusy else { return }
+        status = "Listening next"
+        resumeListenTask?.cancel()
+        resumeListenTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            await MainActor.run {
+                guard let self, self.isHandsFreeMode, !self.isListening, !self.isSending else { return }
+                self.startListeningTurn()
+            }
+        }
     }
 
     private func append(_ role: ChatMessage.Role, _ content: String) {
@@ -519,7 +576,13 @@ final class DriveChatViewModel: ObservableObject {
 
         do {
             let projectId = selectedProject?.projectId ?? selectedProjectId
-            let response = try await chatClient.send(endpoint: endpointURL, sessionId: sessionId, projectId: projectId, messages: messages)
+            let response = try await chatClient.send(
+                endpoint: endpointURL,
+                sessionId: sessionId,
+                projectId: projectId,
+                messages: messages,
+                voiceMode: isCarMode || isHandsFreeMode
+            )
             if let newSession = response.sessionId, !newSession.isEmpty {
                 sessionId = newSession
             }
@@ -527,13 +590,13 @@ final class DriveChatViewModel: ObservableObject {
             let finalReply = reply?.isEmpty == false ? reply! : "I received the message, but no response text came back."
             append(.assistant, finalReply)
             if speakReply {
-                voice.speak(finalReply)
+                speakAssistant(finalReply)
             }
             status = response.fastPath == true ? "Fast route" : "Ready"
         } catch {
             let message = "I could not reach Hermes yet: \(error.localizedDescription)"
             append(.assistant, message)
-            voice.speak(message)
+            speakAssistant(message)
             status = "Connection error"
             lastError = error.localizedDescription
         }

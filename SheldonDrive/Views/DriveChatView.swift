@@ -230,12 +230,27 @@ struct DriveChatView: View {
                     .foregroundStyle(Color.white.opacity(0.55))
                     .tracking(1.1)
                 Spacer()
+                Toggle("Hands-free", isOn: $viewModel.isHandsFreeMode)
+                    .labelsHidden()
+                    .tint(.green)
+                Text("Voice Loop")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(viewModel.isHandsFreeMode ? Color.green : Color.white.opacity(0.52))
                 Toggle("Car", isOn: $viewModel.isCarMode)
                     .labelsHidden()
                     .tint(.orange)
                 Text("Car")
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(viewModel.isCarMode ? Color.orange : Color.white.opacity(0.52))
+            }
+
+            if viewModel.isHandsFreeMode {
+                Label("Hands-free mode keeps the mic cycling after Sheldon speaks. Say your next thought, or tap Quiet to stop the loop.", systemImage: "waveform.and.mic")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.green.opacity(0.86))
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             HStack(spacing: 10) {
